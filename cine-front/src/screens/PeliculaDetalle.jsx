@@ -1,90 +1,175 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { api } from '../api.js'
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { getPeliculaById, getFuncionesByPelicula, postReserva } from "../api";
+import { useAuth } from "../context/AuthContext";
 
 export default function PeliculaDetalle() {
-  const { id } = useParams()
-  const [detalles, setDetalles] = useState([])
-  const [funciones, setFunciones] = useState([])
-  const [selFuncion, setSelFuncion] = useState('')
-  const [mensaje, setMensaje] = useState('')
-  const [error, setError] = useState('')
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, token } = useAuth();
 
-  const peli = useMemo(() => (detalles.find(p => String(p.id) === String(id)) || null), [detalles, id])
+  const [pelicula, setPelicula] = useState(null);
+  const [funciones, setFunciones] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [funcionSel, setFuncionSel] = useState(null);
+  const [cantidad, setCantidad] = useState(1);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const [d, f] = await Promise.all([
-          api.getPeliculasDetalles(),
-          api.getFunciones({ pelicula_id: id }),
-        ])
-        setDetalles(d.data || [])
-        setFunciones(f.data || [])
-      } catch (e) {
-        setError(e.message)
-      }
-    })()
-  }, [id])
+    let alive = true;
+    setLoading(true);
+    setErrorMsg("");
+    Promise.all([getPeliculaById(id), getFuncionesByPelicula(id)])
+      .then(([peli, funs]) => {
+        if (!alive) return;
+        setPelicula(peli);
+        setFunciones(Array.isArray(funs) ? funs : []);
+      })
+      .catch((e) => !alive || setErrorMsg(e?.message || "No se pudo cargar la información."))
+      .finally(() => alive && setLoading(false));
+    return () => { alive = false; };
+  }, [id]);
 
-  const reservar = async () => {
-    setError(''); setMensaje('')
-    if (!selFuncion) { setError('Elegí una función'); return }
+  const poster = useMemo(() => {
+    return pelicula?.poster_url || pelicula?.posterUrl || pelicula?.poster || pelicula?.imagen || "";
+  }, [pelicula]);
+
+  function requireLogin() {
+    navigate("/login", { state: { from: location.pathname } });
+  }
+
+  async function handleReservar() {
+    setErrorMsg("");
+    if (!user || !token) { requireLogin(); return; }
+    if (!funcionSel) { setErrorMsg("Elegí una función antes de reservar."); return; }
+    if (!cantidad || cantidad < 1) { setErrorMsg("La cantidad debe ser al menos 1."); return; }
+
     try {
-      // ⚠️ id_usuario: para pruebas, usa uno existente (ajustar cuando tengas login)
-      const demoUsuarioId = 1
-      const r = await api.postReserva({ id_usuario: demoUsuarioId, id_funcion: Number(selFuncion), cantidad: 1 })
-      setMensaje(`Reserva creada #${r.data.id} (pendiente, vence en ${r.data.vencimiento_min} min)`)
+      setSaving(true);
+      const NEED_USER_ID_IN_BODY = true; // poné false si tu back usa el JWT
+      const idFuncion = funcionSel?.id ?? funcionSel?.id_funcion ?? funcionSel?.funcion_id ?? funcionSel;
+      const reserva = await postReserva(
+        { idPelicula: id, idFuncion, cantidad: Number(cantidad) },
+        token,
+        NEED_USER_ID_IN_BODY ? user?.id : undefined
+      );
+      const idSala = funcionSel?.id_sala ?? funcionSel?.sala_id ?? funcionSel?.idSala ?? null;
+      navigate(`/reserva/${reserva.id || reserva.id_reserva || reserva.reservaId}`, {
+        state: { from: location.pathname, idSala, cantidad: Number(cantidad) },
+        replace: true,
+      });
     } catch (e) {
-      setError(e.message)
+      if (e?.status === 401) {
+        setErrorMsg("Tu sesión expiró o no estás autorizado. Iniciá sesión de nuevo.");
+        requireLogin();
+      } else {
+        setErrorMsg(e?.message || "No se pudo crear la reserva.");
+      }
+    } finally {
+      setSaving(false);
     }
   }
 
-  if (error) return <div style={{ color: 'salmon' }}>{error}</div>
-  if (!peli) return <div>Cargando…</div>
-
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 24 }}>
-      <div>
-        {peli.poster_url ? (
-          <img src={peli.poster_url} alt={peli.titulo} style={{ width: '100%', borderRadius: 12, objectFit: 'cover' }} />
-        ) : <div style={{ height: 360, background: '#12204a', borderRadius: 12 }} />}
+    <div className="inner" style={{ maxWidth: 1100, margin: "0 auto" }}>
+      {/* Top bar */}
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, alignItems: "center" }}>
+        <button className="btn" onClick={() => navigate(-1)}>← Volver</button>
+        {user ? (
+          <button className="btn" onClick={() => navigate("/")}>
+            Hola, <b style={{ marginLeft: 6 }}>{user.nombre ?? user.name ?? user.email}</b>
+          </button>
+        ) : (
+          <button className="btn btn-primary" onClick={requireLogin}>Iniciar sesión</button>
+        )}
       </div>
-      <div>
-        <h1 style={{ margin: 0 }}>{peli.titulo}</h1>
-        <div style={{ opacity: 0.8, marginBottom: 12 }}>
-          Duración: {peli.duracion ? `${peli.duracion} min` : 's/d'}
+
+      {/* Contenido */}
+      {loading ? (
+        <div className="detail-grid">
+          <div className="skeleton" style={{ aspectRatio: "2 / 3", borderRadius: 16 }} />
+          <div>
+            <div className="skeleton" style={{ height: 28, width: "60%", borderRadius: 12, marginBottom: 12 }} />
+            <div className="skeleton" style={{ height: 16, width: "30%", borderRadius: 12 }} />
+          </div>
         </div>
-        <p style={{ whiteSpace: 'pre-wrap' }}>{peli.sinopsis || 'Sin sinopsis'}</p>
-
-        <div style={{ marginTop: 24 }}>
-          <h3>Funciones</h3>
-          <select
-            value={selFuncion}
-            onChange={e => setSelFuncion(e.target.value)}
-            style={{ padding: 8, borderRadius: 8, background: '#0f1830', color: '#fff', border: '1px solid #1f2a44' }}
-          >
-            <option value="">Selecciona una función…</option>
-            {funciones.map(f => (
-              <option key={f.id} value={f.id}>
-                {new Date(f.inicio).toLocaleString()} — {f.idioma} {f.formato} — ${Number(f.precio).toLocaleString('es-AR')}
-              </option>
-            ))}
-          </select>
-
-          <div style={{ marginTop: 12 }}>
-            <button
-              onClick={reservar}
-              style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #1f2a44', background: '#1a2650', color: '#fff', cursor: 'pointer' }}
-            >
-              Crear reserva
-            </button>
+      ) : pelicula ? (
+        <div className="detail-grid">
+          {/* Poster */}
+          <div>
+            {poster ? (
+              <img src={poster} alt={pelicula?.titulo || "Póster"} className="poster-lg" />
+            ) : (
+              <div className="poster center" style={{ borderRadius: 16, fontSize: 48 }}>🎬</div>
+            )}
           </div>
 
-          {mensaje && <div style={{ marginTop: 12, color: '#8ef5a7' }}>{mensaje}</div>}
-          {error && !mensaje && <div style={{ marginTop: 12, color: 'salmon' }}>{error}</div>}
+          {/* Info */}
+          <div>
+            <h1 className="h1" style={{ marginBottom: 6 }}>{pelicula?.titulo ?? "Sin título"}</h1>
+            {pelicula?.duracion && <div className="muted" style={{ marginBottom: 14 }}>{pelicula.duracion} min</div>}
+
+            {/* Funciones */}
+            <div style={{ marginTop: 18 }}>
+              <div className="title" style={{ marginBottom: 8, fontSize: 16 }}>Funciones</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {funciones.length === 0 && <div className="muted">No hay funciones disponibles.</div>}
+                {funciones.map((f) => {
+                  const idF = f.id ?? f.id_funcion ?? f.funcion_id;
+                  const label = f.inicio_fmt || f.inicio || f.horario || `Función ${idF}`;
+                  const selected = (funcionSel?.id ?? funcionSel?.id_funcion ?? funcionSel?.funcion_id) === idF;
+                  return (
+                    <button
+                      key={idF}
+                      className="btn"
+                      onClick={() => setFuncionSel(f)}
+                      style={selected ? { background: "#fff", color: "#0b1225", borderColor: "#fff" } : undefined}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Cantidad */}
+            <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
+              <label className="muted">Entradas:</label>
+              <input
+                type="number"
+                min={1}
+                value={cantidad}
+                onChange={(e) => setCantidad(parseInt(e.target.value || "1", 10))}
+                className="search"
+                style={{ width: 120, maxWidth: "40vw" }}
+              />
+            </div>
+
+            {/* Acciones */}
+            <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button className="btn btn-primary" onClick={handleReservar} disabled={saving}>
+                {saving ? "Creando reserva..." : "Reservar"}
+              </button>
+              {!user && (
+                <button className="btn" onClick={requireLogin}>Iniciar sesión para reservar</button>
+              )}
+            </div>
+
+            {/* Error */}
+            {errorMsg && (
+              <div className="card" style={{ marginTop: 12, padding: 12, borderColor: "rgba(248,113,113,0.35)", background: "rgba(127,29,29,0.25)" }}>
+                {errorMsg}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="center" style={{ height: 180 }}>
+          <div className="muted">Película no encontrada.</div>
+        </div>
+      )}
     </div>
-  )
+  );
 }

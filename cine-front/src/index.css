@@ -1,112 +1,136 @@
-/* === Reset mínimo y modo oscuro === */
-:root { color-scheme: dark; }
-* { box-sizing: border-box; }
+/* ====== Reset mínimo ====== */
+*,
+*::before,
+*::after { box-sizing: border-box; }
 html, body, #root { height: 100%; }
+html, body { margin: 0; padding: 0; }
+img { display: block; max-width: 100%; height: auto; }
+
+/* ====== Tema / fondo ====== */
+:root {
+  --bg-1: #0a1530;
+  --bg-2: #0b1024;
+  --ink: #eef2ff;
+  --ink-dim: rgba(238,242,255,0.75);
+  --panel: rgba(255,255,255,0.06);
+  --panel-border: rgba(255,255,255,0.14);
+  --panel-hover: rgba(255,255,255,0.1);
+  --accent: #3b82f6; /* azul botón */
+}
+
 body {
-  margin: 0;
-  background: #0b1220; /* fallback: coincide con tu gradiente */
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", Arial, "Apple Color Emoji", "Segoe UI Emoji";
-}
-img { max-width: 100%; display: block; }
-
-/* Evita saltos del layout cuando aparece/desaparece el scroll */
-@supports (scrollbar-gutter: stable) { html { scrollbar-gutter: stable both-edges; } }
-html, body { overflow-y: scroll; }
-body { overflow-x: hidden; } /* <- quita el desplazamiento lateral fantasma */
-
-/* === Contenedor centrado global ===
-   Si querés SIN límites de ancho, cambia 1280px por 100vw. */
-.inner {
-  width: min(1280px, 100%);
-  margin-inline: auto;   /* centra SIEMPRE */
-  padding-inline: 16px;  /* respiro lateral */
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #102749 0%, transparent 40%),
+    radial-gradient(1200px 600px at 110% 10%, #0b1a31 0%, transparent 35%),
+    linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* === Páginas: que ocupen alto completo bajo el header === */
-.page {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: linear-gradient(180deg,#0b1220 0%,#0a1530 100%);
-  color: #fff;
+/* ====== Contenedor base ====== */
+.inner { padding: 16px; }
+@media (min-width: 640px) { .inner { padding: 20px; } }
+@media (min-width: 1024px) { .inner { padding: 28px; } }
+
+/* ====== Topbar ====== */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding-bottom: 8px;
+  background: linear-gradient(180deg, rgba(10,21,48,.9), rgba(10,21,48,.6) 60%, transparent);
+  backdrop-filter: blur(6px);
 }
 
-.page-main {
-  flex: 1 1 auto;
-  padding-block: 16px;
-}
-
-/* === Helpers de layout === */
-.center-grid {
-  min-height: calc(100vh - 64px); /* aprox. altura del header */
+/* ====== Grid responsive para cards ====== */
+.grid-cards {
   display: grid;
-  place-items: center;
-  padding: 16px;
+  gap: 20px;
 }
+@media (min-width: 480px) { .grid-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 900px) { .grid-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1280px) { .grid-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
-/* === Grilla de películas responsive sin huecos === */
-.grid-pelis {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
-  align-items: start;
-}
-
-/* Tarjetas */
+/* ====== Card ====== */
 .card {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
   border-radius: 16px;
   overflow: hidden;
-  backdrop-filter: blur(4px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
 }
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.28);
+  background: var(--panel-hover);
+}
+.card-body { padding: 14px; }
 
-/* Imagen con proporción estable: evita “cortes” raros */
-.card-poster {
+/* Póster con proporción 2/3 y recorte bonito */
+.poster {
   width: 100%;
-  aspect-ratio: 2 / 3;        /* 300x450 típico */
-  object-fit: cover;          /* llena el espacio */
-  display: block;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  background: rgba(255,255,255,0.08);
 }
 
-/* Contenido de la tarjeta */
-.card-body { padding: 12px; }
+/* ====== Tipos ====== */
+.h1 { font-size: 28px; font-weight: 800; color: var(--ink); margin: 0; }
+.title { font-weight: 700; color: var(--ink); line-height: 1.2; }
+.muted { color: var(--ink-dim); font-size: 14px; }
 
-/* Buscador */
-.search-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 16px;
-}
-.search-input {
-  flex: 1 1 auto;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid #1f2a44;
-  background: #0f1b36;
-  color: #fff;
+/* ====== Buscador ====== */
+.search {
+  width: 100%;
+  padding: 10px 14px;
+  color: var(--ink);
+  background: rgba(255,255,255,0.12);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
   outline: none;
 }
-.search-input::placeholder { color: #8ea1c8; }
+.search::placeholder { color: rgba(238,242,255,0.65); }
+.search:focus { box-shadow: 0 0 0 3px rgba(255,255,255,0.18); }
 
-/* Mensaje “sin resultados” sin mover la grilla */
-.empty-hint-wrap {
-  position: relative;
-  min-height: 120px; /* reserva espacio para que no “salte” el layout */
-}
-.empty-hint {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  text-align: center;
-  opacity: 0.85;
-}
-
-/* Links del header */
-.navbar a {
-  color: #cfe0ff;
+/* ====== Botones ====== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255,255,255,0.1);
+  color: var(--ink);
   text-decoration: none;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, opacity .15s ease, transform .08s ease;
 }
-.navbar a:hover { color: #fff; }
+.btn:hover { background: rgba(255,255,255,0.15); }
+.btn:active { transform: translateY(1px); }
+.btn-primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+.btn-primary:hover { background: #2f6fe0; }
+
+/* ====== Utilidades ====== */
+.center { display: grid; place-items: center; }
+.skeleton { background: rgba(255,255,255,0.1); border-radius: 12px; }
+.line-clamp-2 {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* ====== Layout detalle responsive ====== */
+.detail-grid {
+  display: grid;
+  gap: 24px;
+}
+@media (min-width: 900px) {
+  .detail-grid { grid-template-columns: 320px 1fr; align-items: start; }
+}
+.poster-lg { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 16px; box-shadow: 0 12px 28px rgba(0,0,0,0.35); }
