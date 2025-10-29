@@ -1,76 +1,112 @@
-
+/* === Reset mínimo y modo oscuro === */
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
-body { margin: 0; background: #0b1220; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, 'Helvetica Neue', Arial; }
-img { max-width: 100%; display: block; }
-
-
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
+  background: #0b1220; /* fallback: coincide con tu gradiente */
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+img { max-width: 100%; display: block; }
+
+/* Evita saltos del layout cuando aparece/desaparece el scroll */
+@supports (scrollbar-gutter: stable) { html { scrollbar-gutter: stable both-edges; } }
+html, body { overflow-y: scroll; }
+body { overflow-x: hidden; } /* <- quita el desplazamiento lateral fantasma */
+
+/* === Contenedor centrado global ===
+   Si querés SIN límites de ancho, cambia 1280px por 100vw. */
+.inner {
+  width: min(1280px, 100%);
+  margin-inline: auto;   /* centra SIEMPRE */
+  padding-inline: 16px;  /* respiro lateral */
+}
+
+/* === Páginas: que ocupen alto completo bajo el header === */
+.page {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg,#0b1220 0%,#0a1530 100%);
+  color: #fff;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+.page-main {
+  flex: 1 1 auto;
+  padding-block: 16px;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+/* === Helpers de layout === */
+.center-grid {
+  min-height: calc(100vh - 64px); /* aprox. altura del header */
+  display: grid;
+  place-items: center;
+  padding: 16px;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+/* === Grilla de películas responsive sin huecos === */
+.grid-pelis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  align-items: start;
 }
+
+/* Tarjetas */
+.card {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  overflow: hidden;
+  backdrop-filter: blur(4px);
+}
+
+/* Imagen con proporción estable: evita “cortes” raros */
+.card-poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;        /* 300x450 típico */
+  object-fit: cover;          /* llena el espacio */
+  display: block;
+}
+
+/* Contenido de la tarjeta */
+.card-body { padding: 12px; }
+
+/* Buscador */
+.search-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.search-input {
+  flex: 1 1 auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #1f2a44;
+  background: #0f1b36;
+  color: #fff;
+  outline: none;
+}
+.search-input::placeholder { color: #8ea1c8; }
+
+/* Mensaje “sin resultados” sin mover la grilla */
+.empty-hint-wrap {
+  position: relative;
+  min-height: 120px; /* reserva espacio para que no “salte” el layout */
+}
+.empty-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  opacity: 0.85;
+}
+
+/* Links del header */
+.navbar a {
+  color: #cfe0ff;
+  text-decoration: none;
+}
+.navbar a:hover { color: #fff; }
