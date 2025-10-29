@@ -1,4 +1,3 @@
-// src/App.jsx
 import { Routes, Route, Navigate } from "react-router-dom";
 import PeliculasScreen from "./screens/PeliculasScreen";
 import PeliculaDetalle from "./screens/PeliculaDetalle";
@@ -9,12 +8,10 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 
 function PrivateRoute({ children }) {
   const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  return children;
+  return user ? children : <Navigate to="/login" replace />;
 }
 
 export default function App() {
-  // Mantengo AuthProvider aquí como lo tenías
   return (
     <AuthProvider>
       <Routes>

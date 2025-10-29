@@ -1,8 +1,4 @@
 // src/api.js
-// Base URL:
-// - Si VITE_API_BASE está definida => se usa (ej: http://192.168.56.1:3001/api)
-// - Si NO está definida => usa '/api' (proxy de Vite en dev)
-
 const ENV_BASE = (import.meta.env.VITE_API_BASE || "").trim();
 const API_BASE = ENV_BASE !== "" ? ENV_BASE : "/api";
 
@@ -57,12 +53,10 @@ function firstArrayDeep(obj, depth = 0) {
   if (Array.isArray(obj)) return obj;
   if (typeof obj !== "object") return null;
 
-  // busca arrays en el primer nivel
   for (const k of Object.keys(obj)) {
     const v = obj[k];
     if (Array.isArray(v)) return v;
   }
-  // baja recursivamente hasta 3 niveles
   for (const k of Object.keys(obj)) {
     const v = obj[k];
     const found = firstArrayDeep(v, depth + 1);
@@ -74,11 +68,7 @@ function firstArrayDeep(obj, depth = 0) {
 function unwrap(x) {
   if (x == null) return x;
   if (Array.isArray(x)) return x;
-
-  // si la API devolvió ok:false lo respetamos para que el caller lo maneje
   if (x && typeof x === "object" && x.ok === false) return x;
-
-  // formatos comunes
   if (Array.isArray(x.data)) return x.data;
   if (x.data && typeof x.data === "object") {
     const arr = firstArrayDeep(x.data);
@@ -88,8 +78,6 @@ function unwrap(x) {
   if (Array.isArray(x.results)) return x.results;
   if (Array.isArray(x.items)) return x.items;
   if (Array.isArray(x.list)) return x.list;
-
-  // fallback: primer array que encontremos en el objeto
   const arr = firstArrayDeep(x);
   return arr ?? x;
 }
@@ -101,16 +89,13 @@ function arr(x) {
 
 // =============== AUTH ===============
 export async function postLogin({ email, password }) {
-  // Backend: POST /api/login  ->  { user, token }
   return fetchJson("/login", { method: "POST", body: { email, password } });
 }
-
 export function getMe(token) {
-  // Backend: GET /api/me (Auth: Bearer)
   return fetchJson("/me", { token });
 }
 
-// =============== PELÍCULAS ===============
+// =============== PELÍCULAS (lista básica) ===============
 export async function getPeliculas() {
   const raw = await fetchJson("/peliculas");
   if (import.meta.env.DEV) console.log("[API] /peliculas RAW →", raw);
@@ -119,21 +104,31 @@ export async function getPeliculas() {
     err.payload = raw;
     throw err;
   }
-  const list = arr(raw);
-  if (!Array.isArray(list) || list.length === 0) {
-    if (import.meta.env.DEV) {
-      console.warn(
-        "[API] /peliculas NO devolvió un array con datos. Keys:",
-        raw && typeof raw === "object" ? Object.keys(raw) : raw
-      );
-    }
-  }
-  return list;
+  return arr(raw);
 }
 
-// Tu back NO tiene /api/peliculas/:id → resolvemos el detalle buscando en la lista
+// =============== PELÍCULAS DETALLES (sinopsis, etc.) ===============
+export async function getPeliculasDetalles() {
+  const raw = await fetchJson("/peliculas/detalles");
+  if (import.meta.env.DEV) console.log("[API] /peliculas/detalles RAW →", raw);
+  return arr(raw);
+}
+
+export async function getPeliculaDetalleById(id) {
+  const detalles = await getPeliculasDetalles();
+  const numId = Number(id);
+  return (
+    detalles.find(
+      (d) =>
+        (d.id ?? d.id_pelicula ?? d.pelicula_id) ===
+        (Number.isNaN(numId) ? id : numId)
+    ) || null
+  );
+}
+
+// Básico por id (solo lista principal)
 export async function getPeliculaById(id) {
-  const peliculas = await getPeliculas(); // array garantizado (o vacío)
+  const peliculas = await getPeliculas();
   const numId = Number(id);
   const found =
     peliculas.find(
@@ -147,8 +142,18 @@ export async function getPeliculaById(id) {
   return found;
 }
 
+// Enriquecido: mergea lista + detalles (trae sinopsis si existe)
+export async function getPeliculaRichById(id) {
+  const [base, det] = await Promise.all([
+    getPeliculaById(id),
+    getPeliculaDetalleById(id).catch(() => null),
+  ]);
+  if (!base && det) return det;
+  if (!det) return base;
+  return { ...base, ...det };
+}
+
 // =============== FUNCIONES ===============
-// Tu back NO tiene /api/peliculas/:id/funciones → traemos /api/funciones y filtramos por id_pelicula
 export async function getFuncionesByPelicula(idPelicula) {
   const data = await fetchJson("/funciones");
   const todas = arr(data);
@@ -161,9 +166,8 @@ export async function getFuncionesByPelicula(idPelicula) {
 
 // =============== RESERVAS ===============
 export function postReserva({ idPelicula, idFuncion, cantidad }, token, userId) {
-  // Si tu backend toma el userId del JWT, pasá userId como undefined.
   const body = { id_pelicula: idPelicula, id_funcion: idFuncion, cantidad };
-  if (userId != null) body.id_usuario = userId; // opcional según back
+  if (userId != null) body.id_usuario = userId;
   return fetchJson("/reservas", { method: "POST", token, body });
 }
 
@@ -172,9 +176,8 @@ export async function getReservas(token) {
   return arr(data);
 }
 
-// Tu back NO tiene /api/reservas/:id → buscamos en la lista
 export async function getReservaById(idReserva, token) {
-  const lista = await getReservas(token); // array
+  const lista = await getReservas(token);
   const rid = Number(idReserva);
   return (
     lista.find(
@@ -206,7 +209,10 @@ export const api = {
   getMe,
   // películas
   getPeliculas,
+  getPeliculasDetalles,
+  getPeliculaDetalleById,
   getPeliculaById,
+  getPeliculaRichById,
   // funciones
   getFuncionesByPelicula,
   // reservas
@@ -218,10 +224,8 @@ export const api = {
   postReservaButacas,
 };
 
-// compat: import api from "./api"
 export default api;
 
-// =============== debug ===============
 if (import.meta.env.DEV) {
   console.log(
     `API BASE => ${ENV_BASE !== "" ? ENV_BASE : "(using Vite proxy /api)"}`
