@@ -23,7 +23,6 @@ async function fetchJson(path, { method = "GET", body, token, headers } = {}) {
     method,
     headers: finalHeaders,
     body: body ? JSON.stringify(body) : undefined,
-    credentials: "include",
   });
 
   let data = null;
@@ -47,7 +46,7 @@ async function fetchJson(path, { method = "GET", body, token, headers } = {}) {
   return data;
 }
 
-// =============== unwrappers robustos ===============
+// =============== unwrappers ===============
 function firstArrayDeep(obj, depth = 0) {
   if (obj == null || depth > 3) return null;
   if (Array.isArray(obj)) return obj;
@@ -59,21 +58,20 @@ function firstArrayDeep(obj, depth = 0) {
   }
   for (const k of Object.keys(obj)) {
     const v = obj[k];
-    const found = firstArrayDeep(v, depth + 1);
-    if (found) return found;
+    if (typeof v === "object" && v) {
+      const r = firstArrayDeep(v, depth + 1);
+      if (Array.isArray(r)) return r;
+    }
   }
   return null;
 }
 
 function unwrap(x) {
-  if (x == null) return x;
+  if (x == null) return [];
   if (Array.isArray(x)) return x;
-  if (x && typeof x === "object" && x.ok === false) return x;
+  if (x.ok === true && Array.isArray(x.data)) return x.data;
   if (Array.isArray(x.data)) return x.data;
-  if (x.data && typeof x.data === "object") {
-    const arr = firstArrayDeep(x.data);
-    if (arr) return arr;
-  }
+  if (Array.isArray(x.result)) return x.result;
   if (Array.isArray(x.rows)) return x.rows;
   if (Array.isArray(x.results)) return x.results;
   if (Array.isArray(x.items)) return x.items;
@@ -86,115 +84,112 @@ function arr(x) {
   const u = unwrap(x);
   return Array.isArray(u) ? u : [];
 }
+export async function postLogin({ email, password }) {
+  const raw = await fetchJson("/login", { method: "POST", body: { email, password } });
+  if (raw && raw.ok && raw.user) {
+    return { ok: true, data: raw.user, token: raw.token };
+  }
+  return raw;
+}
 
 // =============== AUTH ===============
-export async function postLogin({ email, password }) {
-  return fetchJson("/login", { method: "POST", body: { email, password } });
-}
+
+
 export function getMe(token) {
   return fetchJson("/me", { token });
 }
 
-// =============== PELÍCULAS (lista básica) ===============
+// =============== PELÍCULAS ===============
 export async function getPeliculas() {
   const raw = await fetchJson("/peliculas");
-  if (import.meta.env.DEV) console.log("[API] /peliculas RAW →", raw);
   if (raw && raw.ok === false) {
     const err = new Error(raw.error || "API /peliculas respondió ok:false");
     err.payload = raw;
     throw err;
   }
-  return arr(raw);
+  return arr(raw).map((p) => ({
+    id: p.id ?? p.pelicula_id ?? p.id_pelicula,
+    titulo: p.titulo ?? p.nombre ?? p.title,
+    duracion: p.duracion ?? p.duracion_min ?? p.minutos ?? null,
+    poster_url: p.poster_url ?? p.poster ?? p.imagen ?? null,
+  }));
 }
 
-// =============== PELÍCULAS DETALLES (sinopsis, etc.) ===============
+export async function getPeliculaById(id) {
+  const list = await getPeliculas();
+  const numId = Number(id);
+  return (
+    list.find(
+      (p) => (p.id === (Number.isNaN(numId) ? id : numId))
+    ) || null
+  );
+}
+
 export async function getPeliculasDetalles() {
   const raw = await fetchJson("/peliculas/detalles");
-  if (import.meta.env.DEV) console.log("[API] /peliculas/detalles RAW →", raw);
   return arr(raw);
 }
 
 export async function getPeliculaDetalleById(id) {
-  const detalles = await getPeliculasDetalles();
-  const numId = Number(id);
-  return (
-    detalles.find(
-      (d) =>
-        (d.id ?? d.id_pelicula ?? d.pelicula_id) ===
-        (Number.isNaN(numId) ? id : numId)
-    ) || null
-  );
+  const raw = await fetchJson(`/peliculas/${id}`);
+  return raw?.data ?? raw;
 }
 
-// Básico por id (solo lista principal)
-export async function getPeliculaById(id) {
-  const peliculas = await getPeliculas();
-  const numId = Number(id);
-  const found =
-    peliculas.find(
-      (p) =>
-        (p.id ?? p.id_pelicula ?? p.pelicula_id) ===
-        (Number.isNaN(numId) ? id : numId)
-    ) || null;
-
-  if (import.meta.env.DEV)
-    console.log("[API] getPeliculaById(", id, ") →", found);
-  return found;
-}
-
-// Enriquecido: mergea lista + detalles (trae sinopsis si existe)
 export async function getPeliculaRichById(id) {
-  const [base, det] = await Promise.all([
-    getPeliculaById(id),
-    getPeliculaDetalleById(id).catch(() => null),
+  const [peli, funcs] = await Promise.all([
+    getPeliculaDetalleById(id),
+    getFuncionesByPelicula(id),
   ]);
-  if (!base && det) return det;
-  if (!det) return base;
-  return { ...base, ...det };
+  return { ...peli, funciones: funcs };
 }
 
 // =============== FUNCIONES ===============
 export async function getFuncionesByPelicula(idPelicula) {
-  const data = await fetchJson("/funciones");
-  const todas = arr(data);
-  const pid = Number(idPelicula);
-  return todas.filter((f) => {
-    const fk = f.id_pelicula ?? f.pelicula_id ?? f.idPelicula;
-    return fk === (Number.isNaN(pid) ? idPelicula : pid);
-  });
+  const raw = await fetchJson(`/peliculas/${idPelicula}/funciones`);
+  return arr(raw).map((f) => ({
+    id: f.id ?? f.funcion_id ?? f.id_funcion,
+    id_pelicula:
+      f.id_pelicula ?? f.pelicula_id ?? f.peli_id ?? Number(idPelicula),
+    id_sala: f.id_sala ?? f.sala_id,
+    inicio: f.inicio ?? f.fecha_hora ?? f.horario,
+    precio: f.precio ?? f.costo ?? null,
+    sala: f.sala ?? f.nombre_sala ?? null,
+    asientos: f.asientos ?? f.capacidad ?? null,
+  }));
 }
 
 // =============== RESERVAS ===============
-export function postReserva({ idPelicula, idFuncion, cantidad }, token, userId) {
-  const body = { id_pelicula: idPelicula, id_funcion: idFuncion, cantidad };
-  if (userId != null) body.id_usuario = userId;
-  return fetchJson("/reservas", { method: "POST", token, body });
+export async function postReserva({ id_funcion, id_usuario, cantidad = 1, token }) {
+  return fetchJson("/reservas", {
+    method: "POST",
+    token,
+    body: { id_funcion, id_usuario, cantidad },
+  });
 }
 
-export async function getReservas(token) {
-  const data = await fetchJson("/reservas", { token });
-  return arr(data);
+export async function getReservas({ token, usuario_id, funcion_id, estado, desde, hasta } = {}) {
+  const qs = new URLSearchParams();
+  if (usuario_id) qs.set("usuario_id", usuario_id);
+  if (funcion_id) qs.set("funcion_id", funcion_id);
+  if (estado) qs.set("estado", estado);
+  if (desde) qs.set("desde", desde);
+  if (hasta) qs.set("hasta", hasta);
+  const raw = await fetchJson(`/reservas?${qs.toString()}`, { token });
+  return arr(raw);
 }
 
-export async function getReservaById(idReserva, token) {
-  const lista = await getReservas(token);
-  const rid = Number(idReserva);
-  return (
-    lista.find(
-      (r) =>
-        (r.id ?? r.id_reserva ?? r.reserva_id) ===
-        (Number.isNaN(rid) ? idReserva : rid)
-    ) || null
-  );
+export async function getReservaById(id, token) {
+  const raw = await fetchJson(`/reservas/${id}`, { token });
+  return raw?.data ?? raw;
 }
 
 // =============== BUTACAS / SALAS ===============
 export async function getButacasSala(idSala) {
-  const data = await fetchJson(`/salas/${idSala}/butacas`);
-  return arr(data);
+  const raw = await fetchJson(`/salas/${idSala}/butacas`);
+  return arr(raw);
 }
 
-export function postReservaButacas(idReserva, butacas, token) {
+export async function postReservaButacas(idReserva, butacas, token) {
   return fetchJson(`/reservas/${idReserva}/butacas`, {
     method: "POST",
     token,
@@ -202,26 +197,17 @@ export function postReservaButacas(idReserva, butacas, token) {
   });
 }
 
-// =============== export agrupado (compat) ===============
+// =============== AUTH aliases (compat) ===============
+export const login = postLogin;
+export const me = getMe;
+
+// =============== export agrupado ===============
 export const api = {
-  // auth
-  postLogin,
-  getMe,
-  // películas
-  getPeliculas,
-  getPeliculasDetalles,
-  getPeliculaDetalleById,
-  getPeliculaById,
-  getPeliculaRichById,
-  // funciones
+  postLogin, getMe, login, me,
+  getPeliculas, getPeliculasDetalles, getPeliculaDetalleById, getPeliculaById, getPeliculaRichById,
   getFuncionesByPelicula,
-  // reservas
-  postReserva,
-  getReservas,
-  getReservaById,
-  // butacas / salas
-  getButacasSala,
-  postReservaButacas,
+  postReserva, getReservas, getReservaById,
+  getButacasSala, postReservaButacas,
 };
 
 export default api;

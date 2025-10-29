@@ -1,87 +1,97 @@
-// src/context/AuthContext.jsx
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { api } from '../api.js';
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { api } from "../api";
 
-const AuthContext = createContext(null);
-const LS_KEY = 'cine_auth_v1';
+const AuthCtx = createContext(null);
+const LS_KEY = "cine_auth_v1";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
-  const [authReady, setAuthReady] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Restaurar sesión desde localStorage y validar opcionalmente con /api/me
-  useEffect(() => {
-    (async () => {
-      try {
-        const raw = localStorage.getItem(LS_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.token) setToken(parsed.token);
-          if (parsed?.user) setUser(parsed.user);
-          // Verificación opcional del token en el back:
-          if (parsed?.token) {
-            try {
-              const r = await api.me(parsed.token);
-              if (r?.ok && r?.data) {
-                // Si el back devuelve datos del usuario, los sincronizamos
-                setUser((prev) => ({ ...prev, ...r.data }));
-              }
-            } catch {
-              // Token inválido/expirado: limpiamos sesión
-              setUser(null);
-              setToken(null);
-              localStorage.removeItem(LS_KEY);
-            }
-          }
-        }
-      } catch {
-        // Ignorar errores de parseo y continuar
-      } finally {
-        setAuthReady(true);
-      }
-    })();
-  }, []);
-
-  // Persistir cambios de sesión
+  // hidratar desde localStorage
   useEffect(() => {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify({ user, token }));
-    } catch {
-      // ignorar
-    }
-  }, [user, token]);
+      const raw = localStorage.getItem(LS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.token) {
+          setToken(parsed.token);
+          setUser(parsed.user || null);
+        }
+      }
+    } catch {}
+    setLoading(false);
+  }, []);
 
-  // === Acciones ===
-  async function login(email, password) {
-    const r = await api.login({ email, password }); // { ok, data, token }
-    if (!r?.ok) {
-      throw new Error(r?.error || 'Credenciales inválidas');
+  // persistir cambios
+  useEffect(() => {
+    try {
+      if (token && user) {
+        localStorage.setItem(LS_KEY, JSON.stringify({ token, user }));
+      } else {
+        localStorage.removeItem(LS_KEY);
+      }
+    } catch {}
+  }, [token, user]);
+
+  // validar token (opcional, si querés refrescar user)
+  useEffect(() => {
+    let cancel = false;
+    async function check() {
+      if (!token) return;
+      try {
+        const r = await api.me(token);
+        if (!cancel && r?.ok && r?.user) {
+          setUser(r.user);
+        }
+      } catch {
+        // token inválido => limpiar
+        if (!cancel) {
+          setUser(null);
+          setToken(null);
+        }
+      }
     }
-    setUser(r.data);
-    setToken(r.token || null);
-    return r.data;
+    check();
+    return () => { cancel = true; };
+  }, [token]);
+
+  async function login({ email, password }) {
+    const r = await api.login({ email, password }); // normalizado en api.js
+    if (r?.ok && r?.token && r?.data) {
+      setUser(r.data);
+      setToken(r.token);
+      return { ok: true };
+    }
+    const message =
+      r?.error || r?.message || "No se pudo iniciar sesión";
+    return { ok: false, error: message };
   }
 
   function logout() {
+    try {
+      localStorage.removeItem(LS_KEY);
+    } catch {}
     setUser(null);
     setToken(null);
-    try { localStorage.removeItem(LS_KEY); } catch {}
   }
 
-  const value = useMemo(() => ({
-    user,
-    token,
-    authReady,
-    login,
-    logout,
-  }), [user, token, authReady]);
+  const value = useMemo(
+    () => ({
+      user,
+      token,
+      loading,
+      isAuthenticated: !!user && !!token,
+      login,
+      logout,
+    }),
+    [user, token, loading]
+  );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth debe usarse dentro de <AuthProvider>.');
-  return ctx;
+  return useContext(AuthCtx);
 }
